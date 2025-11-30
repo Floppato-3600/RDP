@@ -53,18 +53,6 @@ jobs:
           }
 
 
-      - name: Set Custom Wallpaper
-        run: |
-          $wallpaperUrl = "https://cdn.discordapp.com/attachments/1087129405731635321/1443378147654635561/wp15616120.jpg?ex=6928da27&is=692788a7&hm=0f4fcccabac24d0e40d1865cb6848d60f0f8133141bc92b2e4bc3755fd0145d2&"
-          $wallPath = "C:\Users\Public\wall.jpg"
-
-          # Descargar wallpaper
-          Invoke-WebRequest -Uri $wallpaperUrl -OutFile $wallPath
-
-          # Establecer wallpaper
-          reg add "HKCU\Control Panel\Desktop" /v Wallpaper /t REG_SZ /d "$wallPath" /f
-          RUNDLL32.EXE user32.dll,UpdatePerUserSystemParameters
-
 
       - name: Install Tailscale
         run: |
