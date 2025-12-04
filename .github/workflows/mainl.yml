@@ -1,4 +1,4 @@
-name: Ubuntu-RDP
+name: Ubuntu-RDP-Final
 
 on:
   workflow_dispatch:
@@ -9,27 +9,32 @@ jobs:
     timeout-minutes: 3600
 
     steps:
-      - name: Update system & install desktop
+      - name: Update system & install XFCE + xRDP
         run: |
           sudo apt update
           sudo apt install -y xfce4 xfce4-goodies xfce4-terminal xrdp dbus-x11
+
+          # Habilitar y arrancar xRDP
           sudo systemctl enable xrdp
           sudo systemctl start xrdp
 
       - name: Create user Floppato
         run: |
+          # Elimina usuario si existe
           sudo userdel -r Floppato 2>/dev/null || true
+
+          # Crear usuario
           sudo useradd -m Floppato
           echo "Floppato:FLP4600@@" | sudo chpasswd
           sudo usermod -aG sudo Floppato
 
-          # Configurar XFCE como escritorio por defecto
-          echo "xfce4-session" | sudo tee /home/Floppato/.xsession
+          # Crear archivo .xsession para XFCE
+          echo "startxfce4" | sudo tee /home/Floppato/.xsession
           sudo chown Floppato:Floppato /home/Floppato/.xsession
 
-      - name: Fix xRDP startwm.sh
+      - name: Fix xRDP to use XFCE
         run: |
-          # Evita error de failsafe session
+          # Evitar errores de failsafe session
           sudo sed -i.bak '/^test -x \/etc\/X11\/Xsession/ s/^/#/' /etc/xrdp/startwm.sh
           echo "startxfce4" | sudo tee -a /etc/xrdp/startwm.sh
 
@@ -52,7 +57,7 @@ jobs:
           echo "  IP: $TAILSCALE_IP"
           echo "  Usuario: Floppato"
           echo "  Contraseña: FLP4600@@"
-          echo "  Escritorio: XFCE"
+          echo "  Sesión: Xorg / XFCE"
           echo "================================="
 
       - name: Keep runner alive
