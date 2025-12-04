@@ -25,49 +25,35 @@ jobs:
 
           Restart-Service -Name TermService -Force
 
-
       - name: Create RDP User with Secure Password
         run: |
-          # Configurar usuario Floppato
           $password = "FLP4600@@"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
 
-          # Eliminar si existe
           if (Get-LocalUser -Name "Floppato" -ErrorAction SilentlyContinue) {
               Remove-LocalUser -Name "Floppato"
           }
 
-          # Crear usuario
           New-LocalUser -Name "Floppato" -Password $securePass -AccountNeverExpires
 
-          # Añadir a grupos
           Add-LocalGroupMember -Group "Administrators" -Member "Floppato"
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Floppato"
 
-          # Guardar para mostrarlo
           echo "RDP_CREDS=User: Floppato | Password: $password" >> $env:GITHUB_ENV
-
-          if (-not (Get-LocalUser -Name "Floppato")) {
-              Write-Error "User creation failed"
-              exit 1
-          }
-
-
 
       - name: Install Tailscale
         run: |
           $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
           $installerPath = "$env:TEMP\tailscale.msi"
-          
+
           Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
           Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
           Remove-Item $installerPath -Force
 
-
       - name: Establish Tailscale Connection
         run: |
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID
-          
+
           $tsIP = $null
           $retries = 0
           while (-not $tsIP -and $retries -lt 10) {
@@ -75,13 +61,12 @@ jobs:
               Start-Sleep -Seconds 5
               $retries++
           }
-          
+
           if (-not $tsIP) {
               Write-Error "Tailscale IP not assigned. Exiting."
               exit 1
           }
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
-
 
       - name: Verify RDP Accessibility
         run: |
@@ -93,25 +78,39 @@ jobs:
           }
           Write-Host "TCP connectivity successful!"
 
+      ###################################################################
+      # 🟢 NUEVO PASO: lanzar el workflow de reinicio a las 5h40m
+      ###################################################################
+      - name: Schedule auto-restart workaround
+        run: |
+          Start-Job -ScriptBlock {
+            # 5h40m = 20400 segundos
+            Start-Sleep -Seconds 20400
+
+            $headers = @{
+              "Accept" = "application/vnd.github+json"
+              "Authorization" = "Bearer $env:GITHUB_TOKEN"
+            }
+
+            $body = '{"event_type": "restart_rdp"}'
+
+            Invoke-RestMethod -Method Post `
+              -Uri "https://api.github.com/repos/${env:GITHUB_REPOSITORY}/dispatches" `
+              -Headers $headers `
+              -Body $body `
+              -ContentType "application/json"
+          }
+
+      ###################################################################
 
       - name: Maintain Connection
         run: |
           Write-Host "`n=== RDP ACCESS ==="
           Write-Host "Address: $env:TAILSCALE_IP"
           Write-Host "Username: Floppato"
-          Write-Host "Password: FLP4600"
+          Write-Host "Password: FLP4600@@"
           Write-Host "==================`n"
-          
-          while ($true) {
-              Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
-              Start-Sleep -Seconds 300
-          }
-          Write-Host "Address: $env:TAILSCALE_IP"
-          Write-Host "Username: RDP"
-          Write-Host "Password: $(echo $env:RDP_CREDS)"
-          Write-Host "==================`n"
-          
-          # Keep runner active indefinitely (or until manually cancelled)
+
           while ($true) {
               Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
               Start-Sleep -Seconds 300
