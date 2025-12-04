@@ -1,0 +1,9 @@
+name: RDP-Auto-Restart
+
+on:
+  repository_dispatch:
+    types: [restart_rdp]
+
+jobs:
+  start-rdp:
+    uses: ./.github/workflows/RDP.yml
