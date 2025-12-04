@@ -6,7 +6,7 @@ on:
 jobs:
   ubuntu-rdp:
     runs-on: ubuntu-latest
-    timeout-minutes: 3600
+    timeout-minutes: 3600  # puedes aumentar este límite si quieres prolongar la sesión
 
     steps:
       - name: Update system
@@ -30,3 +30,8 @@ jobs:
 
       - name: Show xRDP status
         run: sudo systemctl status xrdp
+
+      - name: Keep session alive
+        run: |
+          echo "RDP session active. Press Ctrl+C to exit workflow."
+          while true; do sleep 60; done
