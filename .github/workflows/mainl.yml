@@ -38,19 +38,19 @@ jobs:
         run: |
           # Restaurar /etc/xrdp/startwm.sh y escribir un startwm.sh que use dbus-launch
           sudo tee /etc/xrdp/startwm.sh > /dev/null <<'EOF'
-#!/bin/bash
-# Entorno mínimo para que XFCE arranque correctamente en xRDP
-export XDG_CONFIG_DIRS="/etc/xdg${XDG_CONFIG_DIRS:+:}$XDG_CONFIG_DIRS"
-export XDG_DATA_DIRS="/usr/share${XDG_DATA_DIRS:+:}$XDG_DATA_DIRS"
-unset DBUS_SESSION_BUS_ADDRESS
+          #!/bin/bash
+          # Entorno mínimo para que XFCE arranque correctamente en xRDP
+          export XDG_CONFIG_DIRS="/etc/xdg${XDG_CONFIG_DIRS:+:}$XDG_CONFIG_DIRS"
+          export XDG_DATA_DIRS="/usr/share${XDG_DATA_DIRS:+:}$XDG_DATA_DIRS"
+          unset DBUS_SESSION_BUS_ADDRESS
 
-# Lanzar XFCE dentro de dbus
-if command -v dbus-launch >/dev/null 2>&1; then
-  exec dbus-launch --exit-with-session startxfce4
-else
-  exec startxfce4
-fi
-EOF
+          # Lanzar XFCE dentro de dbus
+          if command -v dbus-launch >/dev/null 2>&1; then
+          exec dbus-launch --exit-with-session startxfce4
+            else
+             exec startxfce4
+          fi
+          EOF
           sudo chmod +x /etc/xrdp/startwm.sh
 
           # Reiniciar xrdp para aplicar cambios
