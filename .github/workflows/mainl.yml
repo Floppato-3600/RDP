@@ -1,94 +1,86 @@
 name: Ubuntu-RDP-Final
 
 on:
-workflow_dispatch:
+  workflow_dispatch:
 
 jobs:
-ubuntu-rdp:
-runs-on: ubuntu-latest
-timeout-minutes: 3600
+  ubuntu-rdp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3600
 
+    steps:
+      - name: Update system & install XFCE + xRDP
+        run: |
+          sudo apt update
+          sudo apt install -y xfce4 xfce4-goodies xfce4-terminal xrdp dbus-x11 \
+                              xinit xauth xserver-xorg-core x11-xserver-utils xorgxrdp || true
 
-steps:
-  - name: Update system & install XFCE + xRDP
-    run: |
-      sudo apt update
-      sudo apt install -y xfce4 xfce4-goodies xfce4-terminal xrdp dbus-x11 \
-                          xinit xauth xserver-xorg-core x11-xserver-utils xorgxrdp || true
+          # Habilitar y arrancar xRDP
+          sudo systemctl enable xrdp
+          sudo systemctl start xrdp
 
-      # Habilitar y arrancar xRDP
-      sudo systemctl enable xrdp
-      sudo systemctl start xrdp
+      - name: Create user Floppato
+        run: |
+          # Elimina usuario si existe
+          sudo userdel -r Floppato 2>/dev/null || true
 
-  - name: Create user Floppato
-    run: |
-      # Elimina usuario si existe
-      sudo userdel -r Floppato 2>/dev/null || true
+          # Crear usuario
+          sudo useradd -m Floppato
+          echo "Floppato:FLP4600@@" | sudo chpasswd
+          sudo usermod -aG sudo Floppato
 
-      # Crear usuario
-      sudo useradd -m Floppato
-      echo "Floppato:FLP4600@@" | sudo chpasswd
-      sudo usermod -aG sudo Floppato
+          # Crear archivo .xsession para XFCE
+          echo "startxfce4" | sudo tee /home/Floppato/.xsession > /dev/null
+          sudo chown Floppato:Floppato /home/Floppato/.xsession
+          sudo chmod +x /home/Floppato/.xsession
 
-      # Crear archivo .xsession para XFCE
-      echo "startxfce4" | sudo tee /home/Floppato/.xsession > /dev/null
-      sudo chown Floppato:Floppato /home/Floppato/.xsession
-      sudo chmod +x /home/Floppato/.xsession
-
-  - name: Fix xRDP to use XFCE (robusto)
-    run: |
-      # Restaurar /etc/xrdp/startwm.sh y escribir un startwm.sh que use dbus-launch
-      sudo tee /etc/xrdp/startwm.sh > /dev/null <<'EOF'
-
-
+      - name: Fix xRDP to use XFCE (robusto)
+        run: |
+          # Restaurar /etc/xrdp/startwm.sh y escribir un startwm.sh que use dbus-launch
+          sudo tee /etc/xrdp/startwm.sh > /dev/null <<'EOF'
 #!/bin/bash
-
 # Entorno mínimo para que XFCE arranque correctamente en xRDP
-
 export XDG_CONFIG_DIRS="/etc/xdg${XDG_CONFIG_DIRS:+:}$XDG_CONFIG_DIRS"
 export XDG_DATA_DIRS="/usr/share${XDG_DATA_DIRS:+:}$XDG_DATA_DIRS"
 unset DBUS_SESSION_BUS_ADDRESS
 
 # Lanzar XFCE dentro de dbus
-
 if command -v dbus-launch >/dev/null 2>&1; then
-exec dbus-launch --exit-with-session startxfce4
+  exec dbus-launch --exit-with-session startxfce4
 else
-exec startxfce4
+  exec startxfce4
 fi
 EOF
-sudo chmod +x /etc/xrdp/startwm.sh
+          sudo chmod +x /etc/xrdp/startwm.sh
 
+          # Reiniciar xrdp para aplicar cambios
+          sudo systemctl restart xrdp
 
-      # Reiniciar xrdp para aplicar cambios
-      sudo systemctl restart xrdp
+      - name: Install and start Tailscale
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --ssh
 
-  - name: Install and start Tailscale
-    run: |
-      curl -fsSL https://tailscale.com/install.sh | sh
-      sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --ssh
+      - name: Get Tailscale IP
+        id: ts
+        run: |
+          TS_IP=$(tailscale ip -4)
+          echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
+          echo "Tailscale IP: $TS_IP"
 
-  - name: Get Tailscale IP
-    id: ts
-    run: |
-      TS_IP=$(tailscale ip -4)
-      echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
-      echo "Tailscale IP: $TS_IP"
+      - name: Show RDP Credentials
+        run: |
+          echo "================================="
+          echo "  Ubuntu XRDP listo"
+          echo "  IP: $TAILSCALE_IP"
+          echo "  Usuario: Floppato"
+          echo "  Contraseña: FLP4600@@"
+          echo "  Sesión: Xorg / XFCE"
+          echo "================================="
 
-  - name: Show RDP Credentials
-    run: |
-      echo "================================="
-      echo "  Ubuntu XRDP listo"
-      echo "  IP: $TAILSCALE_IP"
-      echo "  Usuario: Floppato"
-      echo "  Contraseña: FLP4600@@"
-      echo "  Sesión: Xorg / XFCE"
-      echo "================================="
-
-  - name: Keep runner alive
-    run: |
-      while true; do
-        echo "[$(date)] RDP activo - usa Ctrl+C para cerrar el workflow"
-        sleep 300
-      done
-
+      - name: Keep runner alive
+        run: |
+          while true; do
+            echo "[$(date)] RDP activo - usa Ctrl+C para cerrar el workflow"
+            sleep 300
+          done
