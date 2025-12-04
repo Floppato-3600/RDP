@@ -6,7 +6,7 @@ on:
 jobs:
   ubuntu-rdp:
     runs-on: ubuntu-latest
-    timeout-minutes: 3600  # puedes aumentar este límite si quieres prolongar la sesión
+    timeout-minutes: 3600
 
     steps:
       - name: Update system
@@ -14,10 +14,17 @@ jobs:
           sudo apt update -y
           sudo apt upgrade -y
 
+      - name: Create user floppato
+        run: |
+          sudo useradd -m floppato
+          echo "floppato:furryuwu123" | sudo chpasswd
+          sudo usermod -aG sudo floppato
+
       - name: Install XFCE + xRDP
         run: |
           sudo apt install -y xfce4 xfce4-goodies xrdp
-          echo "xfce4-session" | sudo tee /etc/skel/.xsession
+          echo "xfce4-session" | sudo tee /home/floppato/.xsession
+          sudo chown floppato:floppato /home/floppato/.xsession
           sudo systemctl restart xrdp
 
       - name: Install Tailscale
@@ -28,10 +35,7 @@ jobs:
       - name: Show Tailscale IP
         run: tailscale ip -4
 
-      - name: Show xRDP status
-        run: sudo systemctl status xrdp
-
       - name: Keep session alive
         run: |
-          echo "RDP session active. Press Ctrl+C to exit workflow."
+          echo "RDP session active for user floppato"
           while true; do sleep 60; done
