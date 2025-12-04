@@ -8,7 +8,7 @@ ubuntu-rdp:
 runs-on: ubuntu-latest
 timeout-minutes: 3600
 
-```
+
 steps:
   - name: Update system & install XFCE + xRDP
     run: |
@@ -39,7 +39,7 @@ steps:
     run: |
       # Restaurar /etc/xrdp/startwm.sh y escribir un startwm.sh que use dbus-launch
       sudo tee /etc/xrdp/startwm.sh > /dev/null <<'EOF'
-```
+
 
 #!/bin/bash
 
@@ -59,7 +59,7 @@ fi
 EOF
 sudo chmod +x /etc/xrdp/startwm.sh
 
-```
+
       # Reiniciar xrdp para aplicar cambios
       sudo systemctl restart xrdp
 
@@ -91,4 +91,4 @@ sudo chmod +x /etc/xrdp/startwm.sh
         echo "[$(date)] RDP activo - usa Ctrl+C para cerrar el workflow"
         sleep 300
       done
-```
+
