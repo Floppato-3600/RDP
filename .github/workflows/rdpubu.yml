@@ -1,0 +1,32 @@
+name: Ubuntu RDP + Tailscale
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ubuntu-rdp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3600
+
+    steps:
+      - name: Update system
+        run: |
+          sudo apt update -y
+          sudo apt upgrade -y
+
+      - name: Install XFCE + xRDP
+        run: |
+          sudo apt install -y xfce4 xfce4-goodies xrdp
+          echo "xfce4-session" | sudo tee /etc/skel/.xsession
+          sudo systemctl restart xrdp
+
+      - name: Install Tailscale
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
+          sudo tailscale up --authkey ${{ secrets.TAILSCALE_AUTH_KEY }} --accept-routes
+
+      - name: Show Tailscale IP
+        run: tailscale ip -4
+
+      - name: Show xRDP status
+        run: sudo systemctl status xrdp
