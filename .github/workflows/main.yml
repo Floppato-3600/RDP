@@ -10,133 +10,151 @@ jobs:
     timeout-minutes: 3600
 
     steps:
-      - name: Configure Core RDP Settings
+
+      #######################################
+      # HABILITAR RDP + CONFIG SEGURA
+      #######################################
+      - name: Configure RDP
         run: |
           # Activar RDP y desactivar NLA
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
                             -Name "fDenyTSConnections" -Value 0 -Force
+
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
                             -Name "UserAuthentication" -Value 0 -Force
+
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
                             -Name "SecurityLayer" -Value 0 -Force
 
-          # Abrir puerto RDP
-          netsh advfirewall firewall delete rule name="RDP-Tailscale"
+          netsh advfirewall firewall delete rule name="RDP-Tailscale" | Out-Null
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
 
           Restart-Service -Name TermService -Force
 
-      - name: Create RDP User with Secure Password
+      #######################################
+      # CREAR USUARIO RDP
+      #######################################
+      - name: Create RDP User
         run: |
           $password = "FLP4600@@"
-          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+          $secure = ConvertTo-SecureString $password -AsPlainText -Force
 
           if (Get-LocalUser -Name "Floppato" -ErrorAction SilentlyContinue) {
               Remove-LocalUser -Name "Floppato"
           }
 
-          New-LocalUser -Name "Floppato" -Password $securePass -AccountNeverExpires
+          New-LocalUser -Name "Floppato" -Password $secure -AccountNeverExpires
           Add-LocalGroupMember -Group "Administrators" -Member "Floppato"
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Floppato"
 
-          echo "RDP_CREDS=User: Floppato | Password: $password" >> $env:GITHUB_ENV
+          echo "RDP_CREDS=User:Floppato Password:$password" >> $env:GITHUB_ENV
 
+      #######################################
+      # TAILSCALE
+      #######################################
       - name: Install Tailscale
         run: |
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
-          $installerPath = "$env:TEMP\tailscale.msi"
+          $url = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
+          $path = "$env:TEMP\ts.msi"
 
-          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
-          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
-          Remove-Item $installerPath -Force
+          Invoke-WebRequest -Uri $url -OutFile $path
+          Start-Process msiexec.exe -ArgumentList "/i `"$path`" /quiet /norestart" -Wait
+          Remove-Item $path -Force
 
-      - name: Establish Tailscale Connection
+      - name: Connect Tailscale
         run: |
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=runner-$env:GITHUB_RUN_ID
 
-          $tsIP = $null
-          $retries = 0
-          while (-not $tsIP -and $retries -lt 10) {
-              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+          $ip = $null
+          for ($i=0; $i -lt 10; $i++) {
+              $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+              if ($ip) { break }
               Start-Sleep -Seconds 5
-              $retries++
           }
 
-          if (-not $tsIP) {
-              Write-Error "Tailscale IP not assigned. Exiting."
+          if (-not $ip) {
+              Write-Error "ERROR: Tailscale IP not assigned!"
               exit 1
           }
-          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
 
-      - name: Install Visual Studio Code
+          echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
+          Write-Host "Tailscale IP: $ip"
+
+      #######################################
+      # SOFTWARE
+      #######################################
+      - name: Install VSCode
         run: |
-          $vscodeUrl = "https://update.code.visualstudio.com/latest/win32-x64-user/stable"
-          $installerPath = "$env:TEMP\vscode.exe"
+          $url = "https://update.code.visualstudio.com/latest/win32-x64-user/stable"
+          $path = "$env:TEMP\vsc.exe"
+          Invoke-WebRequest -Uri $url -OutFile $path
+          Start-Process $path -ArgumentList "/VERYSILENT /MERGETASKS=!runcode" -Wait
+          Remove-Item $path -Force
 
-          Invoke-WebRequest -Uri $vscodeUrl -OutFile $installerPath
-          Start-Process $installerPath -ArgumentList "/VERYSILENT", "/MERGETASKS=!runcode" -Wait
-          Remove-Item $installerPath -Force
-
-      - name: Install Node.js LTS
+      - name: Install Node.js
         run: |
-          $nodeUrl = "https://nodejs.org/dist/v24.11.1/node-v24.11.1-x64.msi"
-          $installerPath = "$env:TEMP\node.msi"
-
-          Write-Host "Downloading Node from $nodeUrl"
-          Invoke-WebRequest -Uri $nodeUrl -OutFile $installerPath
-
-          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
-          Remove-Item $installerPath -Force
+          $url = "https://nodejs.org/dist/v24.11.1/node-v24.11.1-x64.msi"
+          $path = "$env:TEMP\node.msi"
+          Invoke-WebRequest -Uri $url -OutFile $path
+          Start-Process msiexec.exe -ArgumentList "/i `"$path`" /quiet /norestart" -Wait
+          Remove-Item $path -Force
 
           node -v
           npm -v
 
-      - name: Verify RDP Accessibility
+      #######################################
+      # TEST RDP
+      #######################################
+      - name: Verify RDP
         run: |
-          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
-          $testResult = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
-          if (-not $testResult.TcpTestSucceeded) {
-              Write-Error "TCP connection to RDP port 3389 failed"
+          $ip = $env:TAILSCALE_IP
+
+          $test = Test-NetConnection -ComputerName $ip -Port 3389
+          if (-not $test.TcpTestSucceeded) {
+              Write-Error "No hay conexión al puerto 3389"
               exit 1
           }
-          Write-Host "TCP connectivity successful!"
 
-      ###################################################################
-      # 🟢 Cronómetro real para el auto-reinicio
-      ###################################################################
-      - name: Maintain Connection with Auto-Restart
+          Write-Host "RDP OK — conexión abierta"
+
+      #######################################
+      # MANTENER RDP + AUTO-RESTART
+      #######################################
+      - name: Maintain RDP
         run: |
-          Write-Host "`n=== RDP ACCESS ==="
+          Write-Host "`n======= RDP ACCESS ======="
           Write-Host "Address: $env:TAILSCALE_IP"
           Write-Host "Username: Floppato"
           Write-Host "Password: FLP4600@@"
-          Write-Host "==================`n"
+          Write-Host "==========================`n"
 
-          # Tiempo límite: 5 horas 40 minutos
+          # Tiempo máximo: 5h 40min
           $limit = (Get-Date).AddHours(5).AddMinutes(40)
 
           while ($true) {
-              if (Get-Date -ge $limit) {
-                  Write-Host "Launching repository_dispatch restart..."
+
+              $now = Get-Date
+              if ($now -ge $limit) {
+                  Write-Host "Tiempo agotado — enviando restart..."
 
                   $headers = @{
                     "Accept" = "application/vnd.github+json"
                     "Authorization" = "Bearer $env:GITHUB_TOKEN"
                   }
 
-                  $body = '{"event_type": "restart_rdp"}'
+                  $body = '{"event_type":"restart_rdp"}'
 
                   Invoke-RestMethod -Method Post `
                     -Uri "https://api.github.com/repos/${env:GITHUB_REPOSITORY}/dispatches" `
                     -Headers $headers `
-                    -Body $body `
-                    -ContentType "application/json"
+                    -ContentType "application/json" `
+                    -Body $body
 
-                  Write-Host "Restart dispatched!"
+                  Write-Host "Restart enviado."
                   Start-Sleep -Seconds 10
                   exit 0
               }
 
-              Write-Host "[$(Get-Date)] RDP Active - waiting..."
+              Write-Host "[$now] RDP activo — esperando..."
               Start-Sleep -Seconds 300
           }
