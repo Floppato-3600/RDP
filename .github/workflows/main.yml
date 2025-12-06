@@ -1,72 +1,73 @@
 name: RDP
 
 on:
-  workflow_dispatch:
-  workflow_call:
+  workflow_dispatch:
+  workflow_call:
 
 jobs:
-  secure-rdp:
-    runs-on: windows-2022
-    timeout-minutes: 3600
+  secure-rdp:
+    runs-on: windows-2022
+    timeout-minutes: 3600
 
-    steps:
-      - name: Configure Core RDP Settings
-        run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
-                            -Name "fDenyTSConnections" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-                            -Name "UserAuthentication" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-                            -Name "SecurityLayer" -Value 0 -Force
+    steps:
+      - name: Configure Core RDP Settings
+        run: |
+          # Activar RDP y desactivar NLA
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+                            -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+                            -Name "UserAuthentication" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+                            -Name "SecurityLayer" -Value 0 -Force
 
-          # Abrir puerto 3389
-          netsh advfirewall firewall delete rule name="RDP-Tailscale"
-          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
+          # Abrir puerto RDP
+          netsh advfirewall firewall delete rule name="RDP-Tailscale"
+          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
 
-          Restart-Service -Name TermService -Force
+          Restart-Service -Name TermService -Force
 
-      - name: Create RDP User with Secure Password
-        run: |
-          $password = "FLP4600@@"
-          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+      - name: Create RDP User with Secure Password
+        run: |
+          $password = "FLP4600@@"
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
 
-          if (Get-LocalUser -Name "Floppato" -ErrorAction SilentlyContinue) {
-              Remove-LocalUser -Name "Floppato"
-          }
+          if (Get-LocalUser -Name "Floppato" -ErrorAction SilentlyContinue) {
+              Remove-LocalUser -Name "Floppato"
+          }
 
-          New-LocalUser -Name "Floppato" -Password $securePass -AccountNeverExpires
+          New-LocalUser -Name "Floppato" -Password $securePass -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member "Floppato"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Floppato"
 
-          Add-LocalGroupMember -Group "Administrators" -Member "Floppato"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Floppato"
+          echo "RDP_CREDS=User: Floppato | Password: $password" >> $env:GITHUB_ENV
 
-          echo "RDP_CREDS=User: Floppato | Password: $password" >> $env:GITHUB_ENV
+      - name: Install Tailscale
+        run: |
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
+          $installerPath = "$env:TEMP\tailscale.msi"
 
-      - name: Install Tailscale
-        run: |
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
-          $installerPath = "$env:TEMP\tailscale.msi"
+          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
+          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
+          Remove-Item $installerPath -Force
 
-          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
-          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
-          Remove-Item $installerPath -Force
+      - name: Establish Tailscale Connection
+        run: |
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID
 
-      - name: Establish Tailscale Connection
-        run: |
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID
+          $tsIP = $null
+          $retries = 0
+          while (-not $tsIP -and $retries -lt 10) {
+              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+              Start-Sleep -Seconds 5
+              $retries++
+          }
 
-          $tsIP = $null
-          $retries = 0
-          while (-not $tsIP -and $retries -lt 10) {
-              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-              Start-Sleep -Seconds 5
-              $retries++
-          }
+          if (-not $tsIP) {
+              Write-Error "Tailscale IP not assigned. Exiting."
+              exit 1
+          }
+          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
 
-          if (-not $tsIP) {
-              Write-Error "Tailscale IP not assigned. Exiting."
-              exit 1
-          }
-          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
       - name: Install Visual Studio Code
         run: |
           $vscodeUrl = "https://update.code.visualstudio.com/latest/win32-x64-user/stable"
@@ -90,7 +91,6 @@ jobs:
           node -v
           npm -v
 
-
       - name: Install Discord
         run: |
           $discordUrl = "https://discord.com/api/download?platform=win"
@@ -99,54 +99,53 @@ jobs:
           Invoke-WebRequest -Uri $discordUrl -OutFile $installerPath
           Start-Process $installerPath -ArgumentList "/S" -Wait
           Remove-Item $installerPath -Force
-          
-      - name: Verify RDP Accessibility
-        run: |
-          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
-          $testResult = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
-          if (-not $testResult.TcpTestSucceeded) {
-              Write-Error "TCP connection to RDP port 3389 failed"
-              exit 1
-          }
-          Write-Host "TCP connectivity successful!"
 
-      ###################################################################
-      # 🟢 Cronómetro real para el auto-reinicio
-      ###################################################################
-      - name: Maintain Connection with Auto-Restart
-        run: |
-          Write-Host "`n=== RDP ACCESS ==="
-          Write-Host "Address: $env:TAILSCALE_IP"
-          Write-Host "Username: Floppato"
-          Write-Host "Password: FLP4600@@"
-          Write-Host "==================`n"
+      - name: Verify RDP Accessibility
+        run: |
+          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
+          $testResult = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
+          if (-not $testResult.TcpTestSucceeded) {
+              Write-Error "TCP connection to RDP port 3389 failed"
+              exit 1
+          }
+          Write-Host "TCP connectivity successful!"
 
-          # Tiempo límite: 5 horas 40 minutos
-          $limit = (Get-Date).AddHours(5).AddMinutes(40)
+      ###################################################################
+      # 🟢 Cronómetro real para el auto-reinicio
+      ###################################################################
+      - name: Maintain Connection with Auto-Restart
+        run: |
+          Write-Host "`n=== RDP ACCESS ==="
+          Write-Host "Address: $env:TAILSCALE_IP"
+          Write-Host "Username: Floppato"
+          Write-Host "Password: FLP4600@@"
+          Write-Host "==================`n"
 
-          while ($true) {
-              # Si se cumple el tiempo => enviar dispatch
-              if (Get-Date -ge $limit) {
-                  Write-Host "Launching repository_dispatch restart..."
+          # Tiempo límite: 5 horas 40 minutos
+          $limit = (Get-Date).AddHours(5).AddMinutes(40)
 
-                  $headers = @{
-                    "Accept" = "application/vnd.github+json"
-                    "Authorization" = "Bearer $env:GITHUB_TOKEN"
-                  }
+          while ($true) {
+              if (Get-Date -ge $limit) {
+                  Write-Host "Launching repository_dispatch restart..."
 
-                  $body = '{"event_type": "restart_rdp"}'
+                  $headers = @{
+                    "Accept" = "application/vnd.github+json"
+                    "Authorization" = "Bearer $env:GITHUB_TOKEN"
+                  }
 
-                  Invoke-RestMethod -Method Post `
-                    -Uri "https://api.github.com/repos/${env:GITHUB_REPOSITORY}/dispatches" `
-                    -Headers $headers `
-                    -Body $body `
-                    -ContentType "application/json"
+                  $body = '{"event_type": "restart_rdp"}'
 
-                  Write-Host "Restart dispatched!"
-                  Start-Sleep -Seconds 10
-                  exit 0
-              }
+                  Invoke-RestMethod -Method Post `
+                    -Uri "https://api.github.com/repos/${env:GITHUB_REPOSITORY}/dispatches" `
+                    -Headers $headers `
+                    -Body $body `
+                    -ContentType "application/json"
 
-              Write-Host "[$(Get-Date)] RDP Active - waiting..."
-              Start-Sleep -Seconds 300
-          }
+                  Write-Host "Restart dispatched!"
+                  Start-Sleep -Seconds 10
+                  exit 0
+              }
+
+              Write-Host "[$(Get-Date)] RDP Active - waiting..."
+              Start-Sleep -Seconds 300
+          }
