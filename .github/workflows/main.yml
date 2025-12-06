@@ -2,6 +2,7 @@ name: RDP
 
 on:
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   secure-rdp:
@@ -13,11 +14,11 @@ jobs:
         run: |
           # Activar RDP y desactivar NLA
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
-                             -Name "fDenyTSConnections" -Value 0 -Force
+                            -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-                             -Name "UserAuthentication" -Value 0 -Force
+                            -Name "UserAuthentication" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-                             -Name "SecurityLayer" -Value 0 -Force
+                            -Name "SecurityLayer" -Value 0 -Force
 
           # Abrir puerto 3389
           netsh advfirewall firewall delete rule name="RDP-Tailscale"
@@ -79,31 +80,9 @@ jobs:
           Write-Host "TCP connectivity successful!"
 
       ###################################################################
-      # 🟢 NUEVO PASO: lanzar el workflow de reinicio a las 5h40m
+      # 🟢 Cronómetro real para el auto-reinicio
       ###################################################################
-      - name: Schedule auto-restart workaround
-        run: |
-          Start-Job -ScriptBlock {
-            # 5h40m = 20400 segundos
-            Start-Sleep -Seconds 20400
-
-            $headers = @{
-              "Accept" = "application/vnd.github+json"
-              "Authorization" = "Bearer $env:GITHUB_TOKEN"
-            }
-
-            $body = '{"event_type": "restart_rdp"}'
-
-            Invoke-RestMethod -Method Post `
-              -Uri "https://api.github.com/repos/${env:GITHUB_REPOSITORY}/dispatches" `
-              -Headers $headers `
-              -Body $body `
-              -ContentType "application/json"
-          }
-
-      ###################################################################
-
-      - name: Maintain Connection
+      - name: Maintain Connection with Auto-Restart
         run: |
           Write-Host "`n=== RDP ACCESS ==="
           Write-Host "Address: $env:TAILSCALE_IP"
@@ -111,7 +90,32 @@ jobs:
           Write-Host "Password: FLP4600@@"
           Write-Host "==================`n"
 
+          # Tiempo límite: 5 horas 40 minutos
+          $limit = (Get-Date).AddHours(5).AddMinutes(40)
+
           while ($true) {
-              Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
+              # Si se cumple el tiempo => enviar dispatch
+              if (Get-Date -ge $limit) {
+                  Write-Host "Launching repository_dispatch restart..."
+
+                  $headers = @{
+                    "Accept" = "application/vnd.github+json"
+                    "Authorization" = "Bearer $env:GITHUB_TOKEN"
+                  }
+
+                  $body = '{"event_type": "restart_rdp"}'
+
+                  Invoke-RestMethod -Method Post `
+                    -Uri "https://api.github.com/repos/${env:GITHUB_REPOSITORY}/dispatches" `
+                    -Headers $headers `
+                    -Body $body `
+                    -ContentType "application/json"
+
+                  Write-Host "Restart dispatched!"
+                  Start-Sleep -Seconds 10
+                  exit 0
+              }
+
+              Write-Host "[$(Get-Date)] RDP Active - waiting..."
               Start-Sleep -Seconds 300
           }
