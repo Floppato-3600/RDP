@@ -68,33 +68,38 @@ jobs:
               exit 1
           }
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
-          
+
       - name: Install Visual Studio Code
-        shell: pwsh
         run: |
-          Write-Host "Installing Visual Studio Code..."
-          winget install -e --id Microsoft.VisualStudioCode --accept-package-agreements --accept-source-agreements
-          # Alternativamente, podrías descargar el instalador manualmente si winget no funciona
+          $vscodeUrl = "https://update.code.visualstudio.com/latest/win32-x64-user/stable"
+          $installerPath = "$env:TEMP\vscode.exe"
 
-      - name: Install Node.js (LTS)
-        shell: pwsh
+          Invoke-WebRequest -Uri $vscodeUrl -OutFile $installerPath
+          Start-Process $installerPath -ArgumentList "/VERYSILENT", "/MERGETASKS=!runcode" -Wait
+          Remove-Item $installerPath -Force
+
+      - name: Install Node.js LTS
         run: |
-          Write-Host "Installing Node.js LTS..."
-          winget install -e --id OpenJS.Node.LTS --accept-package-agreements --accept-source-agreements
+          $nodeUrl = "https://nodejs.org/dist/v24.11.1/node-v24.11.1-x64.msi"
+          $installerPath = "$env:TEMP\node.msi"
+
+          Invoke-WebRequest -Uri $nodeUrl -OutFile $installerPath
+          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
+          Remove-Item $installerPath -Force
+
           # Verificar instalación
-          node --version
-          npm --version
+          node -v
+          npm -v
 
-      - name: Download and Install Discord
-        shell: pwsh
+      - name: Install Discord
         run: |
-          Write-Host "Downloading Discord..."
-          $url = "https://discord.com/api/download?platform=win"
-          $out = "$env:TEMP\DiscordSetup.exe"
-          Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
-          Write-Host "Installing Discord..."
-          Start-Process -FilePath $out -ArgumentList "/S" -Wait
-          Remove-Item $out -Force
+          $discordUrl = "https://discord.com/api/download?platform=win"
+          $installerPath = "$env:TEMP\discord.exe"
+
+          Invoke-WebRequest -Uri $discordUrl -OutFile $installerPath
+          Start-Process $installerPath -ArgumentList "/S" -Wait
+          Remove-Item $installerPath -Force
+
 
       - name: Verify RDP Accessibility
         run: |
