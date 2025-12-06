@@ -12,7 +12,6 @@ jobs:
     steps:
       - name: Configure Core RDP Settings
         run: |
-          # Activar RDP y desactivar NLA
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
                             -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
@@ -68,7 +67,7 @@ jobs:
               exit 1
           }
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
-        - name: Install Visual Studio Code
+      - name: Install Visual Studio Code
         run: |
           $vscodeUrl = "https://update.code.visualstudio.com/latest/win32-x64-user/stable"
           $installerPath = "$env:TEMP\vscode.exe"
