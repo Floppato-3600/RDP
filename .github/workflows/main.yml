@@ -68,6 +68,7 @@ jobs:
               exit 1
           }
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+          
       - name: Install Visual Studio Code
         shell: pwsh
         run: |
